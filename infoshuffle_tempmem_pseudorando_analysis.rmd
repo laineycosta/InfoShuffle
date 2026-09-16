@@ -1,0 +1,114 @@
+---
+title: "infoshuffle_tempmem_pseudorando_analysis"
+author: "Lainey Costa'
+output: html_document
+date: "2026-09-15"
+---
+
+```{r}
+#load in packages
+library(stringr)
+library(dplyr)
+library(lme4)
+library(effsize)
+```
+
+
+```{r}
+#find data path 
+file_path <- file.path('../../experiments/InfoShuffle/data/raw_behavioral_data/pseudorando_tempmem')
+
+csv_path <- list.files(path = file_path, pattern = "\\.csv$", recursive = T, full.names = T)
+
+```
+
+```{r}
+#loop to pull columns of interest from each csv 
+tempmem_allsubs <- c()
+
+for(i in 1:length(csv_path)){
+  data <- read.csv(csv_path[i])
+  
+  data <- data %>%
+    select(participant, block, csv_filename, test_file, thisN, image_filename,
+           StudyTrialResp.keys, StudyTrialResp.rt, estimated_minutes, estimated_seconds,
+           left_image, right_image, left_original_position, right_original_position,
+           correct_answer, pairType, TestLoop.TestResp.keys, TestLoop.TestResp.corr,
+           TestLoop.TestResp.rt, DistractorLoop.thisRepN, expName
+           )
+  
+  c("participant", "block", "csv_filename", "test_file", "thisN", "image_filename",
+                     "StudyTrialResp.keys", "StudyTrialResp.rt", "estimated_minutes",
+                     "estimated_seconds", "left_image", "right_image",
+                     "left_original_position", "right_original_position", "correct_answer",
+                     "pairType", "TestLoop.TestResp.keys", "TestLoop.TestResp.corr", "TestLoop.TestResp.rt",
+                     "DistractorLoop.thisRepN", "expName")
+  
+  
+  tempmem_allsubs <- rbind(tempmem_allsubs, data)
+}
+
+```
+
+```{r}
+#create a condition column (blocked vs shuffled)
+tempmem_allsubs$condition = NA
+
+tempmem_allsubs <- tempmem_allsubs %>%
+  mutate(condition = case_when(str_detect(csv_filename, "\\d") ~ "shuffled",
+                               TRUE ~ "blocked"))
+
+```
+
+```{r}
+#exclusions 
+exclude <- c(3, 123, 131, 136, 145, 157, 161, 174, 175, 182, 730635, 36696)
+
+tempmem_allsubs <- tempmem_allsubs[!(tempmem_allsubs$participant %in% exclude), ]
+
+#unique ids 
+unique <- unique(tempmem_allsubs$participant)
+```
+
+```{r}
+#temporal order memory  
+
+#GLME: Effect of condition (across boundary trials only)
+tempmem_condition <- tempmem_allsubs %>%
+  filter(pairType == "across-boundary")
+
+tempmem_condition_lme <- glmer(data = tempmem_condition, family = binomial, TestLoop.TestResp.corr ~ condition + (1 | participant))
+summary(tempmem_condition_lme)
+
+tempmem_cond_coeffs <- exp(fixef(tempmem_condition_lme))
+
+#GLME: Effect of pair type (blocked trials only)
+tempmem_pairtype <- tempmem_allsubs %>%
+  filter(condition == "blocked")
+
+tempmem_pairtype_lme <- glmer(data = tempmem_pairtype, family = binomial, TestLoop.TestResp.corr ~ pairType + (1 | participant))
+summary(tempmem_pairtype_lme)
+
+tempmem_pairtype_coeffs <- exp(fixef(tempmem_pairtype_lme))
+```
+
+
+```{r}
+#time estimates 
+
+#filter the df so that there's no NAs in the estimated minutes/seconds columns
+minutes_allsubs <- tempmem_allsubs[!is.na(tempmem_allsubs$estimated_seconds),]
+
+#combine to total seconds
+minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minutes_allsubs$estimated_seconds
+
+#ttest comparing shuffled vs. blocked conditions
+#get the average for each participant, then pivote to wide format for ttest 
+minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
+minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
+
+t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
+cohen.d(minutes_wide$shuffled, minutes_wide$blocked)
+
+```
+
