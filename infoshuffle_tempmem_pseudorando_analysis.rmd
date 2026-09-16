@@ -5,16 +5,17 @@ output: html_document
 date: "2026-09-15"
 ---
 
-```{r}
+```{r libraries}
 #load in packages
 library(stringr)
 library(dplyr)
+library(tidyr)
 library(lme4)
 library(effsize)
 ```
 
 
-```{r}
+```{r data path}
 #find data path 
 file_path <- file.path('../../experiments/InfoShuffle/data/raw_behavioral_data/pseudorando_tempmem')
 
@@ -22,7 +23,7 @@ csv_path <- list.files(path = file_path, pattern = "\\.csv$", recursive = T, ful
 
 ```
 
-```{r}
+```{r loop}
 #loop to pull columns of interest from each csv 
 tempmem_allsubs <- c()
 
@@ -50,7 +51,7 @@ for(i in 1:length(csv_path)){
 
 ```
 
-```{r}
+```{r creating condition column}
 #create a condition column (blocked vs shuffled)
 tempmem_allsubs$condition = NA
 
@@ -60,27 +61,53 @@ tempmem_allsubs <- tempmem_allsubs %>%
 
 ```
 
-```{r}
-#exclusions 
+```{r exclusions}
 exclude <- c(3, 123, 131, 136, 145, 157, 161, 174, 175, 182, 730635, 36696)
 
 tempmem_allsubs <- tempmem_allsubs[!(tempmem_allsubs$participant %in% exclude), ]
 
 #unique ids 
 unique <- unique(tempmem_allsubs$participant)
+
 ```
 
-```{r}
-#temporal order memory  
+```{r time estimates}
+#filter the df so that there's no NAs in the estimated minutes/seconds columns
+minutes_allsubs <- tempmem_allsubs[!is.na(tempmem_allsubs$estimated_seconds),]
+
+#combine to total seconds
+minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minutes_allsubs$estimated_seconds
+
+
+#get the average for each participant, then pivot to wide format for ttest 
+minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
+minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
+
+#paired ttest
+t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
+
+#cohen's d
+cohen.d(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
+
+```
+
+```{r temporal order memory}
+#filter to remove all NAs from the test corr section
+tempmem_allsubs <- tempmem_allsubs[!is.na(tempmem_allsubs$TestLoop.TestResp.corr),]
+
+#descriptives (mean, standard deviation)
+tempmem_descriptives <- aggregate(TestLoop.TestResp.corr ~  condition + pairType + participant, tempmem_allsubs, function(x) c(mean = mean(x), sd = sd(x)))
+  
 
 #GLME: Effect of condition (across boundary trials only)
 tempmem_condition <- tempmem_allsubs %>%
   filter(pairType == "across-boundary")
 
-tempmem_condition_lme <- glmer(data = tempmem_condition, family = binomial, TestLoop.TestResp.corr ~ condition + (1 | participant))
+tempmem_condition_lme <- glmer(data = tempmem_condition, family = binomial,  control = glmerControl(optimizer = "bobyqa"), TestLoop.TestResp.corr ~ condition + (1 | participant))
 summary(tempmem_condition_lme)
 
 tempmem_cond_coeffs <- exp(fixef(tempmem_condition_lme))
+
 
 #GLME: Effect of pair type (blocked trials only)
 tempmem_pairtype <- tempmem_allsubs %>%
@@ -90,25 +117,5 @@ tempmem_pairtype_lme <- glmer(data = tempmem_pairtype, family = binomial, TestLo
 summary(tempmem_pairtype_lme)
 
 tempmem_pairtype_coeffs <- exp(fixef(tempmem_pairtype_lme))
-```
-
-
-```{r}
-#time estimates 
-
-#filter the df so that there's no NAs in the estimated minutes/seconds columns
-minutes_allsubs <- tempmem_allsubs[!is.na(tempmem_allsubs$estimated_seconds),]
-
-#combine to total seconds
-minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minutes_allsubs$estimated_seconds
-
-#ttest comparing shuffled vs. blocked conditions
-#get the average for each participant, then pivote to wide format for ttest 
-minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
-minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
-
-t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
-cohen.d(minutes_wide$shuffled, minutes_wide$blocked)
 
 ```
-

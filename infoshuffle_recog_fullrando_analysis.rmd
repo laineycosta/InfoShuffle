@@ -1,0 +1,102 @@
+---
+title: "infoshuffle_recog_fullrando_analysis"
+author: "Lainey Costa'
+output: html_document
+date: "2026-09-16"
+---
+
+```{r libraries}
+#load in packages
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(effsize)
+```
+
+
+```{r data path}
+#find data path 
+file_path <- file.path('../../experiments/InfoShuffle/data/raw_behavioral_data/fullrando_recog')
+
+csv_path <- list.files(path = file_path, pattern = "\\.csv$", recursive = T, full.names = T)
+
+```
+
+```{r loop}
+#loop to pull columns of interest from each csv 
+recog_allsubs <- c()
+
+for(i in 1:length(csv_path)){
+  if(i ==5){
+    next
+  }
+  data <- read.csv(csv_path[i])
+   
+  
+  data <- data %>%
+    select(participant, block, csv_filename, test_file, thisN, image_filename,
+           StudyTrialResp.keys, StudyTrialResp.rt, estimated_minutes, estimated_seconds,
+           left_image, right_image, 
+           correct_answer, TestLoop.TestResp.keys, TestLoop.TestResp.corr,
+           TestLoop.TestResp.rt, DistractorLoop.thisRepN, expName
+           )
+  
+  recog_allsubs <- rbind(recog_allsubs, data)
+}
+
+```
+
+```{r creating condition column}
+#create a condition column (blocked vs shuffled)
+recog_allsubs$condition = NA
+
+#trim "csv_filename" to just have "sequence_X"
+recog_allsubs$csv_filename <- str_extract(recog_allsubs$csv_filename, "sequence.*")
+
+recog_allsubs <- recog_allsubs %>%
+  mutate(condition = case_when(str_detect(csv_filename, "\\d") ~ "shuffled",
+                               TRUE ~ "blocked"))
+
+```
+
+```{r exclusions}
+exclude_ids <- c(03, 06, 34, 40, 56)
+
+recog_allsubs <- recog_allsubs[!(recog_allsubs$participant %in% exclude_ids), ]
+```
+
+
+```{r time estimates}
+#filter the df so that there's no NAs in the estimated minutes/seconds columns
+minutes_allsubs <- recog_allsubs[!is.na(recog_allsubs$estimated_seconds),]
+
+#combine to total seconds
+minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minutes_allsubs$estimated_seconds
+
+
+#get the average for each participant, then pivot to wide format for ttest 
+minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
+minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
+
+#paired ttest
+t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
+
+#cohen's d
+cohen.d(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
+
+```
+
+```{r recog memory}
+#descriptives (mean, standard deviation)
+recog_descriptives <- aggregate(TestLoop.TestResp.corr ~  condition + participant, recog_allsubs, function(x) c(mean = mean(x), sd = sd(x)))
+  
+
+#GLME: Effect of condition (across boundary trials only)
+recog_condition_lme <- glmer(data = recog_allsubs, family = binomial, TestLoop.TestResp.corr ~ condition + (1 | participant))
+summary(recog_condition_lme)
+
+recog_cond_coeffs <- exp(fixef(recog_condition_lme))
+
+
+```
