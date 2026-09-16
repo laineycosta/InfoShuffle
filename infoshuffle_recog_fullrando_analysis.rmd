@@ -12,6 +12,7 @@ library(dplyr)
 library(tidyr)
 library(lme4)
 library(effsize)
+library(ggplot2)
 ```
 
 
@@ -76,8 +77,8 @@ minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minute
 
 
 #get the average for each participant, then pivot to wide format for ttest 
-minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
-minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
+minutes_mean <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
+minutes_wide <- pivot_wider(minutes_mean, names_from = condition, values_from = total_seconds)
 
 #paired ttest
 t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
@@ -100,3 +101,52 @@ recog_cond_coeffs <- exp(fixef(recog_condition_lme))
 
 
 ```
+
+```{r time estimate plots}
+#bar plot
+ggplot(minutes_mean, aes(x = condition, y = total_seconds, fill = condition)) +
+  geom_bar(stat = "summary", position = "dodge") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", position = position_dodge(0.9), width = 0.2) +
+  scale_fill_manual(values = c("lightblue", "lightpink")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+
+#ggsave(filename = "X.png", path = X, plot = X, width = , height = , units = "px")
+
+#violin plot
+ggplot(minutes_mean, aes(x = factor(condition), y = total_seconds, fill = factor(condition))) +
+  geom_violin(trim = F) +
+  geom_jitter(width = 0.08, alpha = 0.4, color = "black") +
+  stat_summary(
+    fun = mean,
+    fun.min = function(x) mean(x) - sd(x),
+    fun.max = function(x) mean(x) + sd(x),
+    geom = "pointrange"
+  ) +
+    geom_line(aes(group = participant), color = "darkgray", alpha = 0.3) +
+  scale_fill_manual(values = c("lightblue", "lightpink")) +
+  ylab("Time (in seconds)") +
+  xlab("Condition") +
+  geom_hline(yintercept = 150, linetype = "dotted", col = 'red') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"))
+
+```
+
+```{r recog plot}
+#bar plot
+ggplot(recog_descriptives, aes(x = condition, y = TestLoop.TestResp.corr, fill = condition)) +
+  geom_bar(stat = "summary", position = "dodge") +
+  geom_jitter(width = 0.08, alpha = 0.4, color = "black") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", position = position_dodge(0.9), width = 0.2) +
+  geom_line(aes(group = participant), color = "darkgray", alpha = 0.3) +
+  scale_fill_manual(values = c("lightgreen", "mediumorchid")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+
+
+```
+
+

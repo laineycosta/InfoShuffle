@@ -38,14 +38,6 @@ for(i in 1:length(csv_path)){
            TestLoop.TestResp.rt, DistractorLoop.thisRepN, expName
            )
   
-  c("participant", "block", "csv_filename", "test_file", "thisN", "image_filename",
-                     "StudyTrialResp.keys", "StudyTrialResp.rt", "estimated_minutes",
-                     "estimated_seconds", "left_image", "right_image",
-                     "left_original_position", "right_original_position", "correct_answer",
-                     "pairType", "TestLoop.TestResp.keys", "TestLoop.TestResp.corr", "TestLoop.TestResp.rt",
-                     "DistractorLoop.thisRepN", "expName")
-  
-  
   tempmem_allsubs <- rbind(tempmem_allsubs, data)
 }
 
@@ -80,8 +72,8 @@ minutes_allsubs$total_seconds <- minutes_allsubs$estimated_minutes * 60 + minute
 
 
 #get the average for each participant, then pivot to wide format for ttest 
-minutes_wide <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
-minutes_wide <- pivot_wider(minutes_wide, names_from = condition, values_from = total_seconds)
+minutes_mean <- aggregate(minutes_allsubs, total_seconds ~ condition + participant, mean)
+minutes_wide <- pivot_wider(minutes_mean, names_from = condition, values_from = total_seconds)
 
 #paired ttest
 t.test(minutes_wide$shuffled, minutes_wide$blocked, paired = T)
@@ -116,3 +108,68 @@ summary(tempmem_pairtype_lme)
 tempmem_pairtype_coeffs <- exp(fixef(tempmem_pairtype_lme))
 
 ```
+```{r time estimate plots}
+#bar plot
+ggplot(minutes_mean, aes(x = condition, y = total_seconds, fill = condition)) +
+  geom_bar(stat = "summary", position = "dodge") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", position = position_dodge(0.9), width = 0.2) +
+  scale_fill_manual(values = c("lightblue", "lightpink")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+
+#ggsave(filename = "X.png", path = X, plot = X, width = , height = , units = "px")
+
+#violin plot
+ggplot(minutes_mean, aes(x = factor(condition), y = total_seconds, fill = factor(condition))) +
+  geom_violin(trim = F) +
+  geom_jitter(width = 0.08, alpha = 0.4, color = "black") +
+  stat_summary(
+    fun = mean,
+    fun.min = function(x) mean(x) - sd(x),
+    fun.max = function(x) mean(x) + sd(x),
+    geom = "pointrange"
+  ) +
+    geom_line(aes(group = participant), color = "darkgray", alpha = 0.3) +
+  scale_fill_manual(values = c("lightblue", "lightpink")) +
+  ylab("Time (in seconds)") +
+  xlab("Condition") +
+  geom_hline(yintercept = 150, linetype = "dotted", col = 'red') +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+
+```
+
+```{r tempmem plots}
+#bar plot: accuracy by condition 
+tempmem_cond_mean <- aggregate(tempmem_condition, TestLoop.TestResp.corr ~ condition + participant, mean)
+
+ggplot(tempmem_cond_mean, aes(x = condition, y = TestLoop.TestResp.corr, fill = condition)) +
+  geom_bar(stat = "summary", position = "dodge") +
+  geom_jitter(width = 0.08, alpha = 0.4, color = "black") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", position = position_dodge(0.9), width = 0.2) +
+  geom_line(aes(group = participant), color = "darkgray", alpha = 0.3) +
+  scale_fill_manual(values = c("lightblue", "lightgreen")) +
+  ylab("Proportion Correct") +
+  xlab("Condition") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+
+#bar plot: accuracy by pair type  
+tempmem_pairtype_mean <- aggregate(tempmem_pairtype, TestLoop.TestResp.corr ~ pairType + participant, mean)
+
+ggplot(tempmem_pairtype_mean, aes(x = pairType, y = TestLoop.TestResp.corr, fill = pairType)) +
+  geom_bar(stat = "summary", position = "dodge") +
+  geom_jitter(width = 0.08, alpha = 0.4, color = "black") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", position = position_dodge(0.9), width = 0.2) +
+  geom_line(aes(group = participant), color = "darkgray", alpha = 0.3) +
+  scale_fill_manual(values = c("plum", "lightsalmon")) +
+  ylab("Proportion Correct") +
+  xlab("Pair Type") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
+```
+
