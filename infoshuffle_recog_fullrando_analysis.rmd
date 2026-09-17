@@ -130,7 +130,8 @@ ggplot(minutes_mean, aes(x = factor(condition), y = total_seconds, fill = factor
   xlab("Condition") +
   geom_hline(yintercept = 150, linetype = "dotted", col = 'red') +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        panel.background = element_blank(), axis.line = element_line(color = "black"))
+        panel.background = element_blank(), axis.line = element_line(color = "black"),
+        legend.position = "none")
 
 ```
 

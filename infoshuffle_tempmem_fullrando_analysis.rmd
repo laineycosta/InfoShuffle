@@ -28,6 +28,9 @@ csv_path <- list.files(path = file_path, pattern = "\\.csv$", recursive = T, ful
 tempmem_allsubs <- c()
 
 for(i in 1:length(csv_path)){
+  if(i == 38 | i == 88){ #duplicate ID in folder 27, duplicate 91 
+    next
+  }
   data <- read.csv(csv_path[i])
   
   data <- data %>%
