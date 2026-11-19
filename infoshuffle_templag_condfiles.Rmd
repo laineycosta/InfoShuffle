@@ -1,0 +1,217 @@
+---
+title: "infoshuffle_templag_condfiles"
+author: "Lainey Costa"
+date: "2026-11-16"
+output: html_document
+---
+
+```{r packages}
+library(dplyr)
+library(stringr)
+library(dplyr)
+library(here)
+```
+
+```{r study condfiles}
+knitr::opts_chunk$set(echo = TRUE)
+#set seed
+set.seed(123)
+
+#first, create a vertex with all your categories 
+categories <- c("backpack", "ball", "binoculars", "burger", "cactus", "cake", "calculator", 
+                "cereal", "chess", "chopsticks", "cup", "dice", "dog", "duck", "dumbbell",
+                "extinguisher", "flashlight", "flower", "frog", "globe", "grape", "guitar", "hat", 
+                "headphones", "helmet", "hourglass", "icecream", "kettle", "keyboard", "megaphone",
+                "mitt", "mushroom", "noodles", "owl", "pan", "phone", "radio", "ring", "screwdriver",
+                "shirt", "shoes", "skateboard", "sushi", "teddy", "tie", "toaster", "tweezers", "vase",
+                "watch", "xylophone")
+
+num_conds_per <- c(1:10)
+
+
+for(i in num_conds_per){
+    
+#####BLOCKED
+#randomize order
+categories <- sample(categories)
+cats_blocked <- categories[1:25]
+
+#for the df, you want each item to repeat 5x and have 1-5
+#first, sample 1-10 25 times so that each participant doesn't see the same objects in the same cat   
+stim_num <- as.vector(replicate(25, sample(num_conds_per)[1:5]))
+
+#which block we're on (iter 1 = loop 1, iter 2 = loop 2, etc.)
+iter <- rep(c(1:5), each = 25)
+
+#for the dataframe, adding either a number or letter to the category name 
+categories_df <- paste0(rep(cats_blocked, each = 5), stim_num)
+
+#which category is the stim? 
+cats <- rep(c("cat1", "cat2", "cat3", "cat4", "cat5"), times = 5, each = 5)
+
+#which condition?
+condition <- c("blocked")
+
+#combine it all into a df
+study_blocked <- as.data.frame(cbind(condition, iter, cats, categories_df))
+
+#where is the item in the sequence (1-25 per iteration)
+study_blocked$position <- rep(c(1:25), time = 5)
+
+#for consistency, make iter numeric
+study_blocked$iter <- as.numeric(study_blocked$iter)
+
+#####SHUFFLED
+cats_shuffled <- categories[26:50]
+
+iter <- rep(c(6:10), each = 25)
+
+#reshuffle the numbers again
+stim_num <- as.vector(replicate(25, sample(num_conds_per)[1:5]))
+
+categories_df <- paste0(rep(cats_shuffled, each = 5), stim_num)
+
+condition <- c("shuffled")
+
+study_shuffled <- as.data.frame(cbind(condition, iter, cats, categories_df))
+
+#now shuffle the df, making sure that you only shuffle within each iteration set. Put in a loop that makes it so, if any of the same category are adjacent, reshuffles 
+
+attempt <- 0
+
+while(TRUE) {
+  attempt <- attempt + 1
+  
+  study_shuffled2 <- study_shuffled %>%
+    group_by(iter) %>% #to shuffle so that not all cat images are consecutive (don't always see A1 then A2 then A3)
+    slice_sample(prop = 1) %>%
+    group_by(cats) %>% #do it again by categories so that you go through 1-5 once before going to the next 1-5 
+    mutate(batch = row_number()) %>%
+    group_by(batch) %>%
+    slice_sample(prop = 1) 
+
+  #check for adjacent cats. Reshuffle if they are 
+  adjacent <- study_shuffled2 %>%
+    group_by(iter) %>%
+    summarise(adj = any(cats == dplyr::lag(cats), na.rm = TRUE), .groups = "drop") %>%
+    pull(adj) %>%
+    any()
+  
+  if (!adjacent) {
+    break
+  }
+}
+
+#reorder so that the iter goes 6-10 again 
+study_shuffled2$iter <- as.numeric(study_shuffled2$iter)
+study_shuffled2 <- study_shuffled2[order(study_shuffled2$iter), ]
+
+#remove the "batch" that helped with the shuffling
+study_shuffled2 <- study_shuffled2[,1:4]
+
+#where is the item in the sequence? (1-25 per iteration)
+position <- rep(c(1:25), time = 5)
+
+study_shuffled2 <- cbind(study_shuffled2, position)
+
+#combine to make 1 study df
+study_df <- rbind(study_blocked, study_shuffled2)
+
+#create a stim path for Psychopy
+study_df$stim <- paste0("stimuli/", study_df$categories_df, ".jpg")
+
+#reorganize columns
+study_df <- study_df[,c(1,2,5,3,4,6)]
+
+#rename columns
+colnames(study_df) <- c("condition", "iter", "position", "category", "category_type", "stim")
+
+#write csv
+write.csv(study_df, file = paste0("condfiles/study_", i, ".csv"))
+  }
+
+```
+
+```{r test condfiles}
+#pull in study files
+files <- here('condfiles')
+csv_path <- list.files(path = files, pattern = "\\.csv$", recursive = T, full.names = T)
+
+#get the names for each. Finding what's in between "study" and ".csv" 
+condname <- csv_path %>%
+  str_extract('(?<=study_).*(?=.csv)')
+
+#all possible within and across boundary pairs. Replicate 10 times so that it can be filled later (10 iterations) 
+within_boundary <- matrix(rep(c(2, 5, 7, 10, 12, 15, 17, 20, 22, 25), time = 10), ncol = 2, byrow = T)
+colnames(within_boundary) <- c("original_position1", "original_position2")
+pairtype <- c("within")
+within_boundary <- as.data.frame(cbind(pairtype, within_boundary))
+
+
+across_boundary <- matrix(rep(c(3, 6, 8, 11, 13, 16, 18, 21), time = 10), ncol = 2, byrow = T)
+colnames(across_boundary) <- c("original_position1", "original_position2")
+pairtype <- c("across")
+across_boundary <- as.data.frame(cbind(pairtype, across_boundary))
+
+#loop through the study condfiles to make each test file 
+for(i in 1:length(condname)){
+  data <- read.csv(csv_path[i])
+  current_condfile <- condname[i]
+  
+  #build out the within boundary condition file 
+    #first, identify which category the stims are from 
+  within_boundary$cat1 <- data$category[data$position %in% within_boundary$original_position1]
+  within_boundary$cat2 <- data$category[data$position %in% within_boundary$original_position2]
+  
+   #what image are they seeing?
+  within_boundary$first_img <- data$category_type[data$position %in% within_boundary$original_position1]
+  within_boundary$second_img <- data$category_type[data$position %in% within_boundary$original_position2]
+  
+    #stim path for psychopy
+  within_boundary$stim1 <- data$stim[data$position %in% within_boundary$original_position1]
+  within_boundary$stim2 <- data$stim[data$position %in% within_boundary$original_position2]
+  
+    #which iteration/block/loop is this for?
+  within_boundary$iter <- data$iter[data$category_type %in% within_boundary$first_img]
+  
+  #build out the across boundary condition file 
+   #first, identify which category the stims are from 
+  across_boundary$cat1 <- data$category[data$position %in% across_boundary$original_position1]
+  across_boundary$cat2 <- data$category[data$position %in% across_boundary$original_position2]
+  
+   #what image are they seeing?
+  across_boundary$first_img <- data$category_type[data$position %in% across_boundary$original_position1]
+  across_boundary$second_img <- data$category_type[data$position %in% across_boundary$original_position2]
+  
+    #stim path for psychopy
+  across_boundary$stim1 <- data$stim[data$position %in% across_boundary$original_position1]
+  across_boundary$stim2 <- data$stim[data$position %in% across_boundary$original_position2]
+  
+    #which iteration/block/loop is this for?
+  across_boundary$iter <- data$iter[data$category_type %in% across_boundary$first_img]
+  
+  #now combine together 
+  boundary_combined <- as.data.frame(rbind(across_boundary, within_boundary))
+  
+  #rearrange so that the iterations are together 
+  boundary_combined <- arrange(boundary_combined, iter)
+  
+  #randomize the location the item is on the screen to determine the corr response 
+  locations <- rep(c(0.3, -0.3), each = 45)
+  boundary_combined$locx1 <- sample(locations)
+  
+  #if location 1 is on one side, make location 2 the other side 
+  boundary_combined$locx2 <- ifelse(boundary_combined$locx1 == 0.3, -0.3, 0.3)
+  
+  #determine correct answer based on where item 1 is on the screen (always first)
+  boundary_combined$corr <- ifelse(boundary_combined$locx1 == 0.3, "right", "left")
+  
+  #reorganize columns so that iteration is in the beginning 
+  boundary_combined <- boundary_combined[,c(1, 10, 2,3,4, 5, 6, 7, 8, 9, 11, 12, 13)]
+  
+  #write csv
+  write.csv(boundary_combined, file = paste0("condfiles/test_", current_condfile, ".csv"))
+}
+
+```
+
